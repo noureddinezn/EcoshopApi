@@ -1,0 +1,66 @@
+@startuml EcoAPI Sequence Diagram - Order Creation with Events
+
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam sequenceArrowColor #0066CC
+skinparam actorBorderColor #333333
+skinparam participantBorderColor #0066CC
+
+participant Client as "📱 Client<br/>(Web/Mobile)"
+participant OrderController as "🎮 OrderController"
+participant OrderService as "⚙️ OrderService"
+participant Order as "📦 Order Model"
+participant Event as "🔔 OrderPlaced Event"
+participant Queue as "📋 Job Queue"
+participant EmailJob as "📧 SendEmailJob"
+participant StockJob as "📦 UpdateStockJob"
+participant Database as "💾 Database"
+
+autonumber
+
+Client ->> OrderController : POST /api/orders\n(create order)
+activate OrderController
+
+OrderController ->> OrderService : createOrder(userId, items)
+activate OrderService
+
+OrderService ->> Database : begin transaction
+OrderService ->> Order : create order + items
+activate Order
+Order ->> Database : insert order record
+Order -->> OrderService : order created
+
+OrderService ->> Event : dispatch(OrderPlaced($order))
+activate Event
+Event ->> Queue : enqueue(SendEmailJob)
+Event ->> Queue : enqueue(UpdateStockJob)
+deactivate Event
+
+OrderService ->> Database : commit transaction
+OrderService -->> OrderController : order object
+deactivate OrderService
+
+OrderController -->> Client : 201 Created\n(order response)
+deactivate OrderController
+
+par Asynchronous Processing
+    Queue ->> EmailJob : execute SendEmailJob
+    activate EmailJob
+    EmailJob ->> Database : get order details
+    EmailJob ->> EmailJob : send confirmation email
+    EmailJob ->> Database : mark job completed
+    deactivate EmailJob
+
+    Queue ->> StockJob : execute UpdateStockJob
+    activate StockJob
+    StockJob ->> Database : update product stock
+    StockJob ->> Database : mark job completed
+    deactivate StockJob
+end
+
+note over Client, Queue
+    Client receives response immediately (fast)
+    Email and stock updates happen in background (Queue)
+end
+
+@enduml

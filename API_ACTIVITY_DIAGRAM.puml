@@ -1,0 +1,80 @@
+@startuml EcoAPI Activity Diagram - Order Processing Flow
+
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam activityBorderColor #0066CC
+skinparam activityBackgroundColor #E8F4F8
+
+start
+:Client submits order
+with cart items;
+
+:Validate order
+(Form Validation);
+
+if (Valid?) then (No)
+    :Return validation
+    errors;
+    stop
+else (Yes)
+    :Create Order
+    in Database;
+endif
+
+:Check product
+stock availability;
+
+if (Stock available?) then (No)
+    :Cancel order;
+    :Notify user;
+    stop
+else (Yes)
+    :Dispatch OrderPlaced
+    Event;
+endif
+
+fork
+    :Send confirmation
+    email to user
+    (via Queue);
+
+    partition Email Service {
+        :Retrieve email
+        template;
+        :Generate HTML;
+        :Send via SMTP;
+    }
+    :Update job status;
+else
+    :Update product
+    stock in Database
+    (via Queue);
+
+    partition Inventory {
+        :Reduce stock
+        by quantity;
+        :Log inventory
+        change;
+    }
+    :Update job status;
+else
+    :Notify admin of
+    new order
+    (via Queue);
+
+    partition Admin Notification {
+        :Get admin email;
+        :Send notification;
+    }
+    :Update job status;
+end fork
+
+:Return order details
+to Client;
+
+:Client receives
+order confirmation;
+
+stop
+
+@enduml
